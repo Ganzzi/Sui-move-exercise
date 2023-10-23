@@ -1,50 +1,149 @@
-// Hoàn thiện đoạn code để có thể publish được
 module lesson5::FT_TOKEN {
-    struct FT_TOKEN { }
+    use std::option::{Self, Option};
+    use sui::url::{Self, Url};
+    use sui::coin;
+    use sui::coin::{TreasuryCap, Coin, CoinMetadata};
+    use sui::tx_context::{Self, TxContext};
+    use sui::transfer;
+    use sui::event;
+    use std::string::{String, to_ascii, utf8};
+    use std::ascii::{String as AString};
+
+    struct FT_TOKEN has drop { }
+
+    // event
+    struct TokenMinted has copy, drop {
+        success: bool,
+        recipient: address,
+        amount: u64
+    }
+
+    struct TokenTransferred has copy, drop {
+        success: bool,
+        recipient: address
+    }
+
+    struct TokenBurned has copy, drop {
+        success: bool,
+    }
+
+    struct CoinSplitted has copy, drop {
+        amount: u64
+    }
+
+    struct MetadataUpdated has copy, drop {
+        success: bool,
+        type: String,
+        data: AString
+    }
 
     fun init(witness: FT_TOKEN, ctx: &mut TxContext) {
-        let (treasury_cap, metadata) = coin::create_currency(
-
+        let (treasury_cap, metadata) = coin::create_currency<FT_TOKEN>(
+            witness,
+            2,
+            b"GANZZI$",
+            b"GANZZI$",
+            b"TOKEN FOR EVERYONE$",
+            option::some(url::new_unsafe_from_bytes(b"http://abc")),
+            ctx
         );
+
+        transfer::public_transfer(metadata, tx_context::sender(ctx));
+        transfer::public_share_object(treasury_cap);
     }
 
-    // hoàn thiện function để có thể tạo ra 10_000 token cho mỗi lần mint, và mỗi owner của token mới có quyền mint
-    public fun mint() {
-
+    public entry fun mint(_: &CoinMetadata<FT_TOKEN>, treasury_cap: &mut TreasuryCap<FT_TOKEN>, amount: u64, recipient: address, ctx: &mut TxContext) {
+        coin::mint_and_transfer(treasury_cap, amount, recipient, ctx);
+        event::emit(TokenMinted {
+            success: true,
+            recipient,
+            amount
+        })
     }
 
-    // Hoàn thiện function sau để user hoặc ai cũng có quyền tự đốt đi số token đang sở hữu
-    public entry fun burn_token() {
-
+    public entry fun burn_token(treasury_cap: &mut TreasuryCap<FT_TOKEN>, coin: Coin<FT_TOKEN>) {
+        coin::burn(treasury_cap, coin);
+        event::emit(TokenBurned {
+            success: true
+        })
     }
 
-    // Hoàn thiện function để chuyển token từ người này sang người khác.
-    public entry fun transfer_token() {
-
-        // sau đó khởi 1 Event, dùng để tạo 1 sự kiện khi function transfer được thực thi
+    public entry fun transfer_token(coin: Coin<FT_TOKEN>, recipient: address) {
+        transfer::public_transfer(coin, recipient);
+        event::emit(TokenTransferred {
+            success: true,
+            recipient
+        })
     }
 
-    // Hoàn thiện function để chia Token Object thành một object khác dùng cho việc transfer
-    // gợi ý sử dụng coin:: framework
-    public entry fun split_token() {
-
+    public entry fun split_token(coin: &mut Coin<FT_TOKEN>, amount: u64, ctx: &mut TxContext) {
+        let new_coin = coin::split(coin, amount, ctx);
+        event::emit(CoinSplitted {
+            amount
+        });
+        transfer::public_transfer(new_coin, tx_context::sender(ctx));
     }
 
-    // Viết thêm function để token có thể update thông tin sau
-    public entry fun update_name() {}
-    public entry fun update_description() {}
-    public entry fun update_symbol() {}
-    public entry fun update_icon_url() {}
-
-    // sử dụng struct này để tạo event cho các function update bên trên.
-    struct UpdateEvent {
-        success: bool,
-        data: String
+    public entry fun update_name(
+        treasury_cap: &TreasuryCap<FT_TOKEN>,
+        metadata: &mut CoinMetadata<FT_TOKEN>,
+        name: String
+    ) {
+        coin::update_name(treasury_cap, metadata, name);
+        event::emit(MetadataUpdated {
+            success: true,
+            type: utf8(b"name"),
+            data: to_ascii(name)
+        });
     }
 
-    // Viết các function để get dữ liệu từ token về để hiển thị
-    public entry fun get_token_name() {}
-    public entry fun get_token_description() {}
-    public entry fun get_token_symbol() {}
-    public entry fun get_token_icon_url() {}
+    public entry fun update_description(
+        treasury_cap: &TreasuryCap<FT_TOKEN>,
+        metadata: &mut CoinMetadata<FT_TOKEN>,
+        description: String
+    ) {
+        coin::update_description(treasury_cap, metadata, description);
+        event::emit(MetadataUpdated {
+            success: true,
+            type: utf8(b"description"),
+            data: to_ascii(description)
+        });
+    }
+    public entry fun update_symbol(
+        treasury_cap: &TreasuryCap<FT_TOKEN>,
+        metadata: &mut CoinMetadata<FT_TOKEN>,
+        symbol: AString
+    ) {
+        coin::update_symbol(treasury_cap, metadata, symbol);
+        event::emit(MetadataUpdated {
+            success: true,
+            type: utf8(b"symbol"),
+            data: symbol
+        });
+    }
+    public entry fun update_icon_url(
+        treasury_cap: &TreasuryCap<FT_TOKEN>,
+        metadata: &mut CoinMetadata<FT_TOKEN>,
+        icon_url: AString
+    ) {
+        coin::update_icon_url(treasury_cap, metadata, icon_url);
+        event::emit(MetadataUpdated {
+            success: true,
+            type: utf8(b"icon_url"),
+            data: icon_url
+        });
+    }
+
+    public entry fun get_token_name(metadata: &coin::CoinMetadata<FT_TOKEN>): String {
+        coin::get_name(metadata)
+    }
+    public entry fun get_token_description(metadata: &coin::CoinMetadata<FT_TOKEN>): String {
+        coin::get_description(metadata)
+    }
+    public entry fun get_token_symbol(metadata: &coin::CoinMetadata<FT_TOKEN>): AString {
+        coin::get_symbol(metadata)
+    }
+    public entry fun get_token_icon_url(metadata: &coin::CoinMetadata<FT_TOKEN>): Option<Url> {
+        coin::get_icon_url(metadata)
+    }
 }
